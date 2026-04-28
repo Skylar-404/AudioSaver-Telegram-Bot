@@ -1,6 +1,5 @@
 import logging
 import os
-import shutil
 import asyncio
 from pathlib import Path
 from typing import Optional
@@ -45,7 +44,6 @@ def _format_duration(seconds: int) -> str:
 
 
 def _cleanup(path: Path) -> None:
-    """Delete only the file (safe cleanup)."""
     try:
         if path and path.exists():
             path.unlink()
@@ -57,32 +55,26 @@ def _cleanup(path: Path) -> None:
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message:
-        return
-
-    await update.message.reply_text(
-        "👋 <b>Welcome to YouTube Downloader Bot!</b>\n\n"
-        "Use <code>/dl &lt;YouTube URL&gt;</code> to download a video.\n"
-        "You'll get buttons to choose MP4 or MP3.\n\n"
-        "Type /help for more details.",
-        parse_mode=ParseMode.HTML,
-    )
+    if update.message:
+        await update.message.reply_text(
+            "👋 <b>YouTube Downloader Bot</b>\n\n"
+            "Use:\n<code>/dl &lt;YouTube URL&gt;</code>\n\n"
+            "Then choose MP4 or MP3.",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message:
-        return
-
-    await update.message.reply_text(
-        "📖 <b>How to use:</b>\n\n"
-        "<code>/dl &lt;YouTube URL&gt;</code>\n\n"
-        "The bot will fetch video info and show buttons:\n"
-        "• 🎬 <b>MP4</b> — video\n"
-        "• 🎵 <b>MP3</b> — audio\n\n"
-        "⚠️ Max file size: 50MB\n"
-        "⚠️ ffmpeg must be installed",
-        parse_mode=ParseMode.HTML,
-    )
+    if update.message:
+        await update.message.reply_text(
+            "📖 <b>Usage:</b>\n\n"
+            "<code>/dl &lt;YouTube URL&gt;</code>\n\n"
+            "🎬 MP4 = video\n"
+            "🎵 MP3 = audio\n\n"
+            "⚠️ Max file: 50MB\n"
+            "⚠️ ffmpeg required",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 async def cmd_dl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -91,7 +83,7 @@ async def cmd_dl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if not context.args:
         await update.message.reply_text(
-            "❌ Provide a URL.\nUsage: <code>/dl &lt;YouTube URL&gt;</code>",
+            "❌ Provide a URL.\nUsage:\n<code>/dl &lt;YouTube URL&gt;</code>",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -100,10 +92,13 @@ async def cmd_dl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status_msg = await update.message.reply_text("🔍 Fetching video info...")
 
     try:
-        info = downloader.get_video_info(url)
+        info = await asyncio.to_thread(downloader.get_video_info, url)
     except Exception as exc:
         logger.exception("Info fetch failed")
-        await status_msg.edit_text(f"❌ Failed:\n<code>{str(exc)}</code>", parse_mode=ParseMode.HTML)
+        await status_msg.edit_text(
+            f"❌ Failed:\n<code>{str(exc)}</code>",
+            parse_mode=ParseMode.HTML,
+        )
         return
 
     title = info.get("title", "Unknown")
@@ -111,14 +106,14 @@ async def cmd_dl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     duration = _format_duration(info.get("duration"))
 
     key = str(status_msg.message_id)
-    context.user_data[key] = url  # safer than bot_data
+    context.user_data[key] = url
 
-    keyboard = InlineKeyboardMarkup(
-        [[
+    keyboard = InlineKeyboardMarkup([
+        [
             InlineKeyboardButton("🎬 MP4", callback_data=f"mp4|{key}"),
             InlineKeyboardButton("🎵 MP3", callback_data=f"mp3|{key}")
-        ]]
-    )
+        ]
+    ])
 
     await status_msg.edit_text(
         f"🎬 <b>{title}</b>\n"
@@ -129,7 +124,7 @@ async def cmd_dl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-# ─── Callback Handler ─────────────────────────────────────────────────────────
+# ─── Callback ─────────────────────────────────────────────────────────────────
 
 
 async def callback_download(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -153,48 +148,42 @@ async def callback_download(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     fmt_label = "MP4 🎬" if fmt == "mp4" else "MP3 🎵"
-
     await query.edit_message_text(f"⏳ Downloading {fmt_label}...")
 
     file_path: Optional[Path] = None
 
     try:
-        # run blocking download in thread
         file_path = await asyncio.to_thread(
             downloader.download_video if fmt == "mp4" else downloader.download_audio,
             url
         )
 
         if not file_path or not file_path.exists():
-            raise RuntimeError("Download failed (no file)")
+            raise RuntimeError("Download failed")
 
-        size_mb = file_path.stat().st_size / 1024 / 1024
+        size = file_path.stat().st_size
 
-        if file_path.stat().st_size > TELEGRAM_MAX_BYTES:
+        if size > TELEGRAM_MAX_BYTES:
             await query.edit_message_text(
-                f"❌ File too large ({size_mb:.1f} MB > 50 MB)"
+                f"❌ File too large ({size/1024/1024:.1f} MB > 50 MB)"
             )
             return
 
         await query.edit_message_text(f"📤 Sending {fmt_label}...")
 
-        chat_id = query.message.chat.id
-
         with open(file_path, "rb") as f:
             if fmt == "mp4":
                 await context.bot.send_video(
-                    chat_id=chat_id,
+                    chat_id=query.message.chat.id,
                     video=f,
                     filename=file_path.name,
-                    caption=f"🎬 {file_path.stem}",
                     supports_streaming=True,
                 )
             else:
                 await context.bot.send_audio(
-                    chat_id=chat_id,
+                    chat_id=query.message.chat.id,
                     audio=f,
                     filename=file_path.name,
-                    caption=f"🎵 {file_path.stem}",
                 )
 
         await query.edit_message_text(f"✅ {fmt_label} sent!")
@@ -224,7 +213,7 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(callback_download))
 
     logger.info("Bot started...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling()
 
 
 if __name__ == "__main__":
