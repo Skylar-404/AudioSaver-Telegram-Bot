@@ -5,6 +5,24 @@ from pathlib import Path
 import yt_dlp
 
 
+# ─── Anti-bot options ─────────────────────────────────────────────────────────
+# These options make yt-dlp appear as a legitimate browser to YouTube,
+# bypassing anti-bot detection that would otherwise require cookie auth.
+
+_ANTI_BOT_OPTS = {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    },
+    "socket_timeout": 30,
+    "retries": 5,
+    "nocheckcertificate": False,
+    "force_ipv4": True,
+    "extractor_args": {"youtube": {"player_client": ["web"]}},
+}
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _make_tempdir() -> str:
@@ -39,6 +57,7 @@ def download_video(url: str) -> Path:
         "quiet": True,
         "no_warnings": True,
         "restrictfilenames": False,
+        **_ANTI_BOT_OPTS,
     }
 
     try:
@@ -77,6 +96,7 @@ def download_audio(url: str) -> Path:
                 "preferredquality": "192",
             }
         ],
+        **_ANTI_BOT_OPTS,
     }
 
     try:
@@ -103,6 +123,7 @@ def get_video_info(url: str) -> dict:
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": True,
+        **_ANTI_BOT_OPTS,
     }
 
     try:
