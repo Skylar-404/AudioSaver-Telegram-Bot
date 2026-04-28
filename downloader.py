@@ -50,13 +50,12 @@ def download_video(url: str) -> Path:
     output_template = os.path.join(tmpdir, "%(title).80s.%(ext)s")
 
     ydl_opts = {
-        "format": "bv*[ext=mp4][height<=1080]+ba[ext=m4a]/b[ext=mp4]/best",
+        "format": "bv*+ba/b",  # ✅ FIXED
         "outtmpl": output_template,
         "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
-        "restrictfilenames": False,
         **_ANTI_BOT_OPTS,
     }
 
@@ -64,9 +63,8 @@ def download_video(url: str) -> Path:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        file_path = _find_file(tmpdir, "mp4")
+        file_path = list(Path(tmpdir).glob("*.*"))[0]
 
-        # Rename safely
         safe_name = _safe_filename(file_path.stem) + ".mp4"
         safe_path = file_path.with_name(safe_name)
         file_path.rename(safe_path)
