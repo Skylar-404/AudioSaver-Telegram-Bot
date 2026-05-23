@@ -5,8 +5,6 @@ from pathlib import Path
 import yt_dlp
 
 
-# ─── Anti-bot options ─────────────────────────────────────────────────────────
-
 _ANTI_BOT_OPTS = {
     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
     "http_headers": {
@@ -45,7 +43,7 @@ def download_video(url: str) -> Path:
     output_template = os.path.join(tmpdir, "%(title).80s.%(ext)s")
 
     ydl_opts = {
-        "format": "bv*+ba/b",  # ✅ FIXED (critical)
+        "format": "bv*+ba/b", 
         "outtmpl": output_template,
         "merge_output_format": "mp4",
         "noplaylist": True,
@@ -77,7 +75,7 @@ def download_audio(url: str) -> Path:
     output_template = os.path.join(tmpdir, "%(title).80s.%(ext)s")
 
     ydl_opts = {
-        "format": "bestaudio/best",  # ✅ SAFE
+        "format": "bestaudio/best",  
         "outtmpl": output_template,
         "noplaylist": True,
         "quiet": True,
